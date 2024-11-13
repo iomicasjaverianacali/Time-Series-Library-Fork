@@ -203,7 +203,6 @@ class Dataset_ETT_minute(Dataset):
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
 
-
 class Dataset_Custom(Dataset):
     def __init__(self, args, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
@@ -306,6 +305,133 @@ class Dataset_Custom(Dataset):
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
 
+class Dataset_Custom2(Dataset):
+    def __init__(self, args, root_path, flag='train', size=None,
+                 features='S', data_path='ETTh1.csv',
+                 target='OT', scale=True, timeenc=0, freq='h', seasonal_patterns=None):
+        # size [seq_len, label_len, pred_len]
+        self.args = args
+        # info
+        if size == None:
+            self.seq_len = 24 * 4 * 4
+            self.label_len = 24 * 4
+            self.pred_len = 24 * 4
+        else:
+            self.seq_len = size[0]
+            self.label_len = size[1]
+            self.pred_len = size[2]
+        # init
+        assert flag in ['train', 'test', 'val']
+        type_map = {'train': 0, 'val': 1, 'test': 2}
+        self.set_type = type_map[flag]
+
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+
+        self.root_path = root_path
+        self.data_path = data_path
+        self.__read_data__()
+
+    def __read_data__(self):
+        self.scaler = StandardScaler()
+
+        subfolders = [f.path for f in os.scandir(self.root_path) if f.is_dir()]
+        
+        list_of_df = []
+        lens_of_df = []
+
+        for folder in subfolders:
+            if 'Visit' not in folder:
+                continue
+                    
+            for file_i in folder:
+                try:
+                    df_raw = pd.read_csv(os.path.join(os.path.join(self.root_path, folder), file_i), header=None)
+                    list_of_df.append(df_raw)
+                    lens_of_df.append(len(df_raw))
+                except FileNotFoundError:
+                    continue
+
+        self.list_of_df = list_of_df
+        self.lens_of_df = lens_of_df
+        total_lens = np.sum(lens_of_df)
+        num_train = int(len(total_lens) * 0.7)
+        num_test = int(len(total_lens) * 0.2)
+        num_vali = total_lens - num_train - num_test
+        border1s = [0, num_train - self.seq_len, total_lens - num_test - self.seq_len]
+        border2s = [num_train, num_train + num_vali, total_lens]
+        border1 = border1s[self.set_type]
+        border2 = border2s[self.set_type]
+
+        if self.features == 'M' or self.features == 'MS':
+            cols_data = df_raw.columns[1:]
+            df_data = df_raw[cols_data]
+        elif self.features == 'S':
+            df_data = df_raw[[self.target]]
+
+        if self.scale:
+            train_data = df_data[border1s[0]:border2s[0]]
+            self.scaler.fit(train_data.values)
+            data = self.scaler.transform(df_data.values)
+        else:
+            data = df_data.values
+
+        df_stamp = df_raw[['date']][border1:border2]
+        df_stamp['date'] = pd.to_datetime(df_stamp.date)
+        if self.timeenc == 0:
+            df_stamp['month'] = df_stamp.date.apply(lambda row: row.month, 1)
+            df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
+            df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
+            df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
+            data_stamp = df_stamp.drop(['date'], 1).values
+        elif self.timeenc == 1:
+            data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
+            data_stamp = data_stamp.transpose(1, 0)
+
+        self.data_x = data[border1:border2]
+        self.data_y = data[border1:border2]
+
+        if self.set_type == 0 and self.args.augmentation_ratio > 0:
+            self.data_x, self.data_y, augmentation_tags = run_augmentation_single(self.data_x, self.data_y, self.args)
+
+        self.data_stamp = data_stamp
+    
+    def find_measurement_and_index(self, I):
+        # lengths is a list [N1, N2, ..., NL]
+        accumulated_length = 0
+        
+        for measurement_num, length in enumerate(self.lens_of_df, start=1):
+            if accumulated_length < I <= accumulated_length + length:
+                # Calculate the index within the measurement
+                measurement_index = I - accumulated_length
+                return measurement_num, measurement_index
+            accumulated_length += length
+        
+        return None, None  # If I is out of bounds
+
+    def __getitem__(self, index):
+        n_meas, idx_in_meas = self.find_measurement_and_index(index)
+
+        if index > self.lens_of_df[n_meas-1] - self.seq_len - self.pred_len:
+            n_meas = n_meas + 1
+            idx_in_meas = 0
+        
+        seq_x = self.list_of_df[n_meas-1].iloc[idx_in_meas-(self.seq_len+self.pred_len):idx_in_meas-self.pred_len, 1].tolist()
+        seq_y = self.list_of_df[n_meas-1].iloc[idx_in_meas-self.pred_len:idx_in_meas, 1].tolist()
+        
+        seq_x_mark = self.data_stamp[s_begin:s_end]
+        seq_y_mark = self.data_stamp[r_begin:r_end]
+
+        return seq_x, seq_y, seq_x_mark, seq_y_mark
+
+    def __len__(self):
+        return len(self.data_x) - self.seq_len - self.pred_len + 1
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
 
 class Dataset_M4(Dataset):
     def __init__(self, args, root_path, flag='pred', size=None,
