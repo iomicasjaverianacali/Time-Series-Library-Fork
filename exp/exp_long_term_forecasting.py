@@ -85,6 +85,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         train_steps = len(train_loader)
         early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
+        train_early_stopping = EarlyStopping(patience=int(self.args.patience/3), verbose=True, is_train_loss=True)
 
         model_optim = self._select_optimizer()
         criterion = self._select_criterion()
@@ -127,10 +128,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                     loss = criterion(outputs, batch_y)
-                    train_loss.append(loss.item())
+                    #train_loss.append(loss.item())
 
+                    shape = outputs.shape
+                    a =  train_data.inverse_transform(outputs.detach().cpu().numpy().reshape(shape[0] * shape[1], -1)).reshape(shape)
+                    b = train_data.inverse_transform(batch_y.detach().cpu().numpy().reshape(shape[0] * shape[1], -1)).reshape(shape)
+                    loss_denorm = np.sqrt(criterion(torch.Tensor(a), torch.Tensor(b)))
+                    train_loss.append(loss_denorm.item())
                 if (i + 1) % 100 == 0:
-                    print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                    print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss_denorm.item()))
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((self.args.train_epochs - epoch) * train_steps - i)
                     print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
@@ -145,17 +151,26 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     loss.backward()
                     model_optim.step()
 
-            print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
-            vali_loss = self.vali(vali_data, vali_loader, criterion)
-            test_loss = self.vali(test_data, test_loader, criterion)
+            print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
+            print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}".format(epoch + 1, train_steps, train_loss))
+            
+            #test_loss = self.vali(test_data, test_loader, criterion)
+            #print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(#    epoch + 1, train_steps, train_loss, vali_loss, test_loss))
 
-            print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
-                epoch + 1, train_steps, train_loss, vali_loss, test_loss))
-            early_stopping(vali_loss, self.model, path)
-            if early_stopping.early_stop:
-                print("Early stopping")
-                break
+            train_early_stopping(train_loss, self.model, path)
+
+            if train_early_stopping.early_stop:
+                    print("Early stopping due to stagnated train loss")
+                    break
+
+            if (epoch + 1) % 5 == 0:
+                vali_loss = self.vali(vali_data, vali_loader, criterion)
+                print("Epoch: {0}, Steps: {1} | Vali Loss: {2:.7f}".format(epoch + 1, train_steps, vali_loss))
+                early_stopping(vali_loss, self.model, path)
+                if early_stopping.early_stop:
+                    print("Early stopping due to stagnated val loss")
+                    break
 
             adjust_learning_rate(model_optim, epoch + 1, self.args)
 

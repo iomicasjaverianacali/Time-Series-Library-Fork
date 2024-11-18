@@ -18,6 +18,10 @@ def adjust_learning_rate(optimizer, epoch, args):
             2: 5e-5, 4: 1e-5, 6: 5e-6, 8: 1e-6,
             10: 5e-7, 15: 1e-7, 20: 5e-8
         }
+    elif args.lradj == 'typeJulian':
+        lr_adjust = {
+            30:5e-5, 40: 5e-7
+        }
     elif args.lradj == "cosine":
         lr_adjust = {epoch: args.learning_rate /2 * (1 + math.cos(epoch / args.train_epochs * math.pi))}
     if epoch in lr_adjust.keys():
@@ -28,7 +32,7 @@ def adjust_learning_rate(optimizer, epoch, args):
 
 
 class EarlyStopping:
-    def __init__(self, patience=7, verbose=False, delta=0):
+    def __init__(self, patience=7, verbose=False, delta=0, is_train_loss=False):
         self.patience = patience
         self.verbose = verbose
         self.counter = 0
@@ -36,20 +40,24 @@ class EarlyStopping:
         self.early_stop = False
         self.val_loss_min = np.inf
         self.delta = delta
+        self.is_train_loss = is_train_loss
 
     def __call__(self, val_loss, model, path):
         score = -val_loss
         if self.best_score is None:
             self.best_score = score
-            self.save_checkpoint(val_loss, model, path)
+            if not self.is_train_loss:
+                self.save_checkpoint(val_loss, model, path)
         elif score < self.best_score + self.delta:
             self.counter += 1
-            print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            es_str = 'train' if self.is_train_loss else 'vali'
+            print(f'EarlyStopping counter for {es_str}: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
                 self.early_stop = True
         else:
             self.best_score = score
-            self.save_checkpoint(val_loss, model, path)
+            if not self.is_train_loss:
+                self.save_checkpoint(val_loss, model, path)
             self.counter = 0
 
     def save_checkpoint(self, val_loss, model, path):
