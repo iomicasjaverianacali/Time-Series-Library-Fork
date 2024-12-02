@@ -20,7 +20,7 @@ def adjust_learning_rate(optimizer, epoch, args):
         }
     elif args.lradj == 'typeJulian':
         lr_adjust = {
-            30:5e-5, 40: 5e-7
+            100:5e-5, 500: 5e-6, 800: 5e-7
         }
     elif args.lradj == "cosine":
         lr_adjust = {epoch: args.learning_rate /2 * (1 + math.cos(epoch / args.train_epochs * math.pi))}

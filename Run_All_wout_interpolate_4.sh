@@ -6,31 +6,31 @@ is_training=1
 root_path="/users/jdvillegas/wearme-models-pujc-methane-concentration/data"
 data_path="merged_0.csv"
 freq="s"
-model_id="methane"
+model_id="methaneInterp"
 model="Crossformer"
 data="custom"
 target="METHANE"
 features="S"
-seq_len=100
+seq_len=120
 label_len=5
-pred_len=40
-e_layers=2
-d_layers=1
+pred_len=30
+e_layers=5
+d_layers=5
 factor=3
 enc_in=1
 dec_in=1
 c_out=1
 des="Exp"
 itr=1
-train_epochs=30
-patience=15
+train_epochs=1000
+patience=100
 lradj="typeJulian"
 dropout=0.3
 d_model=128
 batch_size=256
 
 # Construct the command
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -62,7 +62,7 @@ python -u run.py \
 
 model="DLinear"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -94,7 +94,7 @@ python -u run.py \
 
 model="FEDformer"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -126,7 +126,7 @@ python -u run.py \
 
 model="FiLM"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -158,7 +158,7 @@ python -u run.py \
 
 model="FreTS"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -190,7 +190,7 @@ python -u run.py \
 
 model="Informer"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -222,7 +222,7 @@ python -u run.py \
 
 model="iTransformer"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -254,7 +254,7 @@ python -u run.py \
 
 model="Koopa"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -286,7 +286,7 @@ python -u run.py \
 
 model="PatchTST"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -318,7 +318,7 @@ python -u run.py \
 
 model="PAttn"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -350,7 +350,7 @@ python -u run.py \
 
 model="Pyraformer"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -382,7 +382,7 @@ python -u run.py \
 
 model="Reformer"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -414,7 +414,7 @@ python -u run.py \
 
 model="SCINet"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -446,7 +446,7 @@ python -u run.py \
 
 model="TiDE"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -478,7 +478,7 @@ python -u run.py \
 
 model="Transformer"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \
@@ -510,7 +510,7 @@ python -u run.py \
 
 model="TSMixer"
 
-python -u run.py \
+python -u /users/jdvillegas/repos/Time-Series-Library-Fork/run.py \
   --task_name $task_name \
   --is_training $is_training \
   --root_path $root_path \

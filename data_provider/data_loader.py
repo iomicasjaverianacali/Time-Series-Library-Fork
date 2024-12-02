@@ -334,7 +334,126 @@ class Dataset_Custom(Dataset):
 
         self.root_path = root_path
         self.data_path = data_path
-        self.__read_data__()
+        #self.__read_data__()
+        self.__read_data__visit()
+
+    def __read_data__visit(self):
+        self.scaler = StandardScaler()
+
+        list_of_discontinous_ts = []
+        lens_of_discontinous_ts = []
+        list_of_discontinuous_timefeatures = []
+        lens_of_discontinous_timefeatures = []
+
+        interpolate = True
+        smooth = True
+
+        n_visit = 2
+
+        if n_visit == 2:
+            folder = f"{self.root_path}/2ndVisit"
+        if n_visit == 3:
+            folder = f"{self.root_path}/3rdVisit"
+        if n_visit == 4:
+            folder = f"{self.root_path}/4thVisit"
+
+        files = os.listdir(folder)
+        files.sort()
+        for file_i in files:
+            try:
+                df_raw = pd.read_csv(os.path.join(os.path.join(self.root_path, folder), file_i), header=None)
+                df_raw.columns = ['date', 'METHANE']
+
+                if self.features == 'M' or self.features == 'MS':
+                    cols_data = df_raw.columns[1:]
+                    df_data = df_raw[cols_data]
+                elif self.features == 'S':
+                    df_data = df_raw[[self.target]]
+
+                    if smooth:
+                        df_data = df_data.rolling(window=10, min_periods=1).mean()
+
+                    if interpolate:
+                        M = 1000
+                        N = df_data[self.target].values.shape[0]
+
+                        time_delta = timedelta(seconds=0.5)
+
+                        # FFT of the signal
+                        fft_y = np.fft.fft(df_data['METHANE'].values)
+
+                        # Zero-padding in the frequency domain
+                        zero_pad = M - N
+                        fft_y_padded = np.concatenate([
+                                fft_y[:N // 2].squeeze(),  # First half of FFT
+                                np.zeros(zero_pad),  # Zeros in the middle
+                                fft_y[N // 2:].squeeze()  # Second half of FFT
+                            ])
+
+                        # Inverse FFT to get interpolated signal
+                        y_interpolated = np.fft.ifft(fft_y_padded).real  # Take the real part
+
+                        # Scale the interpolated signal to match the original amplitude
+                        scale_factor = M / N
+                        y_interpolated *= scale_factor
+
+                        # Create a new pandas DataFrame for the interpolated signal
+                        df_data = pd.DataFrame({f'{self.target}': y_interpolated})
+
+                if self.scale:
+                    self.scaler.fit(df_data.values)
+                    data = self.scaler.transform(df_data.values)
+                else:
+                    data = df_data.values
+
+                df_stamp = df_raw[['date']]
+                df_stamp['date'] = pd.to_datetime(df_stamp.date)
+
+                if interpolate:
+                    # Generate new datetime entries
+                    x_new = [df_stamp['date'][0] + i * time_delta / (M / N) for i in range(M)]
+                    df_stamp = pd.DataFrame({f'date': x_new})
+
+                if self.timeenc == 0:
+                    df_stamp['month'] = df_stamp.date.apply(lambda row: row.month, 1)
+                    df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
+                    df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
+                    df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
+                    data_stamp = df_stamp.drop(['date'], 1).values
+                elif self.timeenc == 1:
+                    data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
+                    data_stamp = data_stamp.transpose(1, 0)
+                    
+                list_of_discontinuous_timefeatures.append(data_stamp)
+                lens_of_discontinous_timefeatures.append(data_stamp.shape[0])
+                list_of_discontinous_ts.append(data)
+                lens_of_discontinous_ts.append(data.shape[0])
+            except FileNotFoundError or IsADirectoryError:
+                continue
+
+        self.list_of_discontinous_ts = list_of_discontinous_ts
+        self.lens_of_discontinous_ts = lens_of_discontinous_ts
+        self.list_of_discontinuous_timefeatures = list_of_discontinuous_timefeatures
+        self.lens_of_discontinous_timefeatures = lens_of_discontinous_timefeatures
+
+        num_train = int(len(self.list_of_discontinous_ts) * 0.7)
+        num_test = int(len(self.list_of_discontinous_ts) * 0.2)
+        num_vali = len(self.list_of_discontinous_ts) - num_train - num_test
+
+        border1s = [0, num_train, num_train + num_vali]
+        border2s = [num_train, num_train + num_vali, len(self.lens_of_discontinous_timefeatures)]
+        border1 = border1s[self.set_type]
+        border2 = border2s[self.set_type]
+
+        self.list_of_discontinous_ts = self.list_of_discontinous_ts[border1:border2]
+        self.list_of_discontinuous_timefeatures = self.list_of_discontinuous_timefeatures[border1:border2]
+        self.lens_of_discontinous_ts = self.lens_of_discontinous_ts[border1:border2]
+        self.lens_of_discontinous_timefeatures = self.lens_of_discontinous_timefeatures[border1:border2]
+
+        print(f"Lengths: {self.lens_of_discontinous_ts}")
+        #if self.set_type == 0 and self.args.augmentation_ratio > 0:
+        #    self.data_x, self.data_y, augmentation_tags = run_augmentation_single(self.data_x, self.data_y, self.args)        
+ 
 
     def __read_data__(self):
         """
@@ -373,7 +492,7 @@ class Dataset_Custom(Dataset):
         list_of_discontinuous_timefeatures = []
         lens_of_discontinous_timefeatures = []
 
-        interpolate = False
+        interpolate = True
         smooth = True
 
         for folder in subfolders:
