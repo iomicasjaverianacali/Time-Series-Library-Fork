@@ -14,8 +14,12 @@ import warnings
 from utils.augmentation import run_augmentation_single
 from datetime import timedelta
 
-warnings.filterwarnings('ignore')
+import os
+import sys
+sys.path.append("/users/jdvillegas/wearme-models-pujc-methane-concentration/classes")
+from DataManager import DataManager
 
+warnings.filterwarnings('ignore')
 
 class Dataset_ETT_hour(Dataset):
     def __init__(self, args, root_path, flag='train', size=None,
@@ -334,8 +338,328 @@ class Dataset_Custom(Dataset):
 
         self.root_path = root_path
         self.data_path = data_path
+        self.__read_data__()
+    
+    def __read_data__(self):
+        self.scaler = StandardScaler()
+        interpolate = True
+        smooth = True
+
+        mydm = DataManager()
+        filled_nans_all_visits_meas = mydm.make_meas_with_nans(path_to_root_folder_all_meas='/'.join(self.root_path.split("/")[:-1]))
+
+        n_visit = 0 # 2ndVisit
+
+        df_raw = filled_nans_all_visits_meas[n_visit]
+
+        num_train = int(len(df_raw) * 0.7)
+        num_test = int(len(df_raw) * 0.2)
+        num_vali = len(df_raw) - num_train - num_test
+        border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
+        border2s = [num_train, num_train + num_vali, len(df_raw)]
+        border1 = border1s[self.set_type]
+        border2 = border2s[self.set_type]
+
+        nan_indexes = df_raw[df_raw[self.target].isna()].index
+
+        consecutive_groups = self.group_consecutive(list(nan_indexes))
+        y_signals = self.fill_nans_w_signals(consecutive_groups)
+
+        for cnt, group in enumerate(consecutive_groups):
+            df_raw.loc[group, self.target] = y_signals[cnt]
+            
+            start_date = df_raw.loc[group[0] - 1, 'date'] if group[0] > 0 else pd.Timestamp('2023-01-01 00:00:00')
+            for i, idx in enumerate(group):
+                df_raw.loc[idx, 'date'] = start_date + timedelta(seconds=0.5 * (i + 1))
+        
+        if self.features == 'M' or self.features == 'MS':
+            cols_data = df_raw.columns[1:]
+            df_data = df_raw[cols_data]
+        elif self.features == 'S':
+            df_data = df_raw[[self.target]]
+
+            if smooth:
+                df_data = df_data.rolling(window=10, min_periods=1).mean()
+
+            if interpolate:
+                M = 1000
+                N = df_data[self.target].values.shape[0]
+
+                time_delta = timedelta(seconds=0.5)
+
+                # FFT of the signal
+                fft_y = np.fft.fft(df_data['METHANE'].values)
+
+                # Zero-padding in the frequency domain
+                zero_pad = M - N
+                fft_y_padded = np.concatenate([
+                                fft_y[:N // 2].squeeze(),  # First half of FFT
+                                np.zeros(zero_pad),  # Zeros in the middle
+                                fft_y[N // 2:].squeeze()  # Second half of FFT
+                            ])
+
+                # Inverse FFT to get interpolated signal
+                y_interpolated = np.fft.ifft(fft_y_padded).real  # Take the real part
+
+                # Scale the interpolated signal to match the original amplitude
+                scale_factor = M / N
+                y_interpolated *= scale_factor
+
+                # Create a new pandas DataFrame for the interpolated signal
+                df_data = pd.DataFrame({f'{self.target}': y_interpolated})
+
+        if self.scale:
+            self.scaler.fit(df_data.values)
+            data = self.scaler.transform(df_data.values)
+        else:
+            data = df_data.values
+
+        df_stamp = df_raw[['date']]
+        df_stamp['date'] = pd.to_datetime(df_stamp.date)
+
+        if interpolate:
+            # Generate new datetime entries
+            x_new = [df_stamp['date'][0] + i * time_delta / (M / N) for i in range(M)]
+            df_stamp = pd.DataFrame({f'date': x_new})
+
+        if self.timeenc == 0:
+            df_stamp['month'] = df_stamp.date.apply(lambda row: row.month, 1)
+            df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
+            df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
+            df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
+            data_stamp = df_stamp.drop(['date'], 1).values
+        elif self.timeenc == 1:
+            data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
+            data_stamp = data_stamp.transpose(1, 0)
+        
+        self.data_x = data[border1:border2]
+        self.data_y = data[border1:border2]
+        self.data_stamp = data_stamp
+    
+    def fill_nans_w_signals(self, consecutive_groups):
+        peaks_per_sec = 5/(60*5)
+        y_signals = []
+        for g in consecutive_groups:
+            time_interval = len(g)/0.5
+            N_peaks = int(time_interval*peaks_per_sec)
+
+            x = np.linspace(0, len(g), len(g))
+
+            y_combined = np.zeros((len(g),))
+
+            for i in range(N_peaks):
+                #idx_synth_peak = np.random.randint(low=10, high=len(consecutive_groups[0])-30)
+                idx_synth_peak = int(i*len(g)/N_peaks)
+                factor=np.random.rand()
+
+                lda = 0.5
+                A=1000*factor
+                y = A*np.exp(-x/lda)
+                
+                y_combined = y_combined + np.roll(y, idx_synth_peak)
+            
+            y_signals.append(y_combined)
+
+            return y_signals
+    
+    def group_consecutive(self, indices):
+        grouped = []
+        temp_group = [indices[0]]  # Start with the first index
+
+        for i in range(1, len(indices)):
+            if indices[i] == indices[i - 1] + 1:
+                temp_group.append(indices[i])  # Continue the current group
+            else:
+                grouped.append(temp_group)  # Finalize the current group
+                temp_group = [indices[i]]  # Start a new group
+
+        grouped.append(temp_group)  # Add the last group
+        return grouped
+
+    def __getitem__(self, index):
+        s_begin = index
+        s_end = s_begin + self.seq_len
+        r_begin = s_end - self.label_len
+        r_end = r_begin + self.label_len + self.pred_len
+
+        seq_x = self.data_x[s_begin:s_end]
+        seq_y = self.data_y[r_begin:r_end]
+        seq_x_mark = self.data_stamp[s_begin:s_end]
+        seq_y_mark = self.data_stamp[r_begin:r_end]
+
+        return seq_x, seq_y, seq_x_mark, seq_y_mark
+
+    def __len__(self):
+        return len(self.data_x) - self.seq_len - self.pred_len + 1
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+
+class Dataset_Custom2(Dataset):
+    def __init__(self, args, root_path, flag='train', size=None,
+                 features='S', data_path='ETTh1.csv',
+                 target='OT', scale=True, timeenc=0, freq='h', seasonal_patterns=None):
+        # size [seq_len, label_len, pred_len]
+        self.args = args
+        # info
+        if size == None:
+            self.seq_len = 24 * 4 * 4
+            self.label_len = 24 * 4
+            self.pred_len = 24 * 4
+        else:
+            self.seq_len = size[0]
+            self.label_len = size[1]
+            self.pred_len = size[2]
+        # init
+        assert flag in ['train', 'test', 'val']
+        type_map = {'train': 0, 'val': 1, 'test': 2}
+        self.set_type = type_map[flag]
+
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+
+        self.root_path = root_path
+        self.data_path = data_path
         #self.__read_data__()
         self.__read_data__visit()
+    
+    def __read_data__visit_new(self):
+        self.scaler = StandardScaler()
+        interpolate = True
+        smooth = True
+
+        num_train = int(len(df_raw) * 0.7)
+        num_test = int(len(df_raw) * 0.2)
+        num_vali = len(df_raw) - num_train - num_test
+        border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
+        border2s = [num_train, num_train + num_vali, len(df_raw)]
+        border1 = border1s[self.set_type]
+        border2 = border2s[self.set_type]
+
+        mydm = DataManager()
+        filled_nans_all_visits_meas = mydm.make_meas_with_nans(path_to_root_folder_all_meas='/'.join(self.root_path.split("/")[:-1]))
+
+        n_visit = 0 # 2ndVisit
+
+        df_raw = filled_nans_all_visits_meas[n_visit]
+        nan_indexes = df_raw[df_raw[self.target].isna()].index
+
+        consecutive_groups = self.group_consecutive(list(nan_indexes))
+        y_signals = self.fill_nans_w_signals(consecutive_groups)
+
+        for cnt, group in enumerate(consecutive_groups):
+            df_raw.loc[group, self.target] = y_signals[cnt]
+            
+            start_date = df_raw.loc[group[0] - 1, 'date'] if group[0] > 0 else pd.Timestamp('2023-01-01 00:00:00')
+            for i, idx in enumerate(group):
+                df_raw.loc[idx, 'date'] = start_date + timedelta(seconds=0.5 * (i + 1))
+        
+        if self.features == 'M' or self.features == 'MS':
+            cols_data = df_raw.columns[1:]
+            df_data = df_raw[cols_data]
+        elif self.features == 'S':
+            df_data = df_raw[[self.target]]
+
+            if smooth:
+                df_data = df_data.rolling(window=10, min_periods=1).mean()
+
+            if interpolate:
+                M = 1000
+                N = df_data[self.target].values.shape[0]
+
+                time_delta = timedelta(seconds=0.5)
+
+                # FFT of the signal
+                fft_y = np.fft.fft(df_data['METHANE'].values)
+
+                # Zero-padding in the frequency domain
+                zero_pad = M - N
+                fft_y_padded = np.concatenate([
+                                fft_y[:N // 2].squeeze(),  # First half of FFT
+                                np.zeros(zero_pad),  # Zeros in the middle
+                                fft_y[N // 2:].squeeze()  # Second half of FFT
+                            ])
+
+                # Inverse FFT to get interpolated signal
+                y_interpolated = np.fft.ifft(fft_y_padded).real  # Take the real part
+
+                # Scale the interpolated signal to match the original amplitude
+                scale_factor = M / N
+                y_interpolated *= scale_factor
+
+                # Create a new pandas DataFrame for the interpolated signal
+                df_data = pd.DataFrame({f'{self.target}': y_interpolated})
+
+        if self.scale:
+            self.scaler.fit(df_data.values)
+            data = self.scaler.transform(df_data.values)
+        else:
+            data = df_data.values
+
+        df_stamp = df_raw[['date']]
+        df_stamp['date'] = pd.to_datetime(df_stamp.date)
+
+        if interpolate:
+            # Generate new datetime entries
+            x_new = [df_stamp['date'][0] + i * time_delta / (M / N) for i in range(M)]
+            df_stamp = pd.DataFrame({f'date': x_new})
+
+        if self.timeenc == 0:
+            df_stamp['month'] = df_stamp.date.apply(lambda row: row.month, 1)
+            df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
+            df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
+            df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
+            data_stamp = df_stamp.drop(['date'], 1).values
+        elif self.timeenc == 1:
+            data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
+            data_stamp = data_stamp.transpose(1, 0)
+        
+        self.data_x = data[border1:border2]
+        self.data_y = data[border1:border2]
+        self.data_stamp = data_stamp
+    
+    def fill_nans_w_signals(self, consecutive_groups):
+        peaks_per_sec = 5/(60*5)
+        y_signals = []
+        for g in consecutive_groups:
+            time_interval = len(g)/0.5
+            N_peaks = int(time_interval*peaks_per_sec)
+
+            x = np.linspace(0, len(g), len(g))
+
+            y_combined = np.zeros((len(g),))
+
+            for i in range(N_peaks):
+                #idx_synth_peak = np.random.randint(low=10, high=len(consecutive_groups[0])-30)
+                idx_synth_peak = int(i*len(g)/N_peaks)
+                factor=np.random.rand()
+
+                lda = 0.5
+                A=1000*factor
+                y = A*np.exp(-x/lda)
+                
+                y_combined = y_combined + np.roll(y, idx_synth_peak)
+            
+            y_signals.append(y_combined)
+
+            return y_signals
+    
+    def group_consecutive(self, indices):
+        grouped = []
+        temp_group = [indices[0]]  # Start with the first index
+
+        for i in range(1, len(indices)):
+            if indices[i] == indices[i - 1] + 1:
+                temp_group.append(indices[i])  # Continue the current group
+            else:
+                grouped.append(temp_group)  # Finalize the current group
+                temp_group = [indices[i]]  # Start a new group
+
+        grouped.append(temp_group)  # Add the last group
+        return grouped
 
     def __read_data__visit(self):
         self.scaler = StandardScaler()
