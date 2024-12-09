@@ -161,8 +161,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             train_early_stopping(train_loss, self.model, path)
 
             if train_early_stopping.early_stop:
-                    print("Early stopping due to stagnated train loss")
-                    break
+                print("Early stopping due to stagnated train loss")
+                break
 
             if (epoch + 1) % 5 == 0:
                 vali_loss = self.vali(vali_data, vali_loader, criterion)

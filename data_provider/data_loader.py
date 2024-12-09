@@ -382,7 +382,7 @@ class Dataset_Custom(Dataset):
                 df_data = df_data.rolling(window=10, min_periods=1).mean()
 
             if interpolate:
-                M = 1000
+                M = 10000
                 N = df_data[self.target].values.shape[0]
 
                 time_delta = timedelta(seconds=0.5)
@@ -460,7 +460,7 @@ class Dataset_Custom(Dataset):
             
             y_signals.append(y_combined)
 
-            return y_signals
+        return y_signals
     
     def group_consecutive(self, indices):
         grouped = []
