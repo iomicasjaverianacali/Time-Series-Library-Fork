@@ -310,7 +310,7 @@ class Dataset_Custom2(Dataset):
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
 
-class Dataset_Custom(Dataset):
+class Dataset_Custom3(Dataset):
     def __init__(self, args, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
                  target='OT', scale=True, timeenc=0, freq='h', seasonal_patterns=None):
@@ -495,7 +495,7 @@ class Dataset_Custom(Dataset):
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
 
-class Dataset_Custom2(Dataset):
+class Dataset_Custom(Dataset):
     def __init__(self, args, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
                  target='OT', scale=True, timeenc=0, freq='h', seasonal_patterns=None):
