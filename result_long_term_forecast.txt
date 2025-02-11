@@ -49,3 +49,9 @@ mse:4946.19677734375, mae:46.165382385253906, dtw:not calculated
 long_term_forecast_methane_TSMixer_custom_ftS_sl100_ll5_pl40_dm128_nh8_el2_dl1_df2048_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0  
 mse:4080.305419921875, mae:41.00095748901367, dtw:not calculated
 
+long_term_forecast_methane_Autoformer_MethaneAllVisits_ftS_sl40_ll5_pl10_dm128_nh8_el2_dl1_df2048_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0_epochs_6  
+mse:4639.2958984375, mae:49.06930923461914, dtw:not calculated
+
+long_term_forecast_methane_Autoformer_MethaneAllVisits_ftS_sl40_ll5_pl10_dm128_nh8_el2_dl1_df2048_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0_epochs_50  
+mse:4268.7685546875, mae:42.064659118652344, dtw:not calculated
+
